@@ -16,6 +16,7 @@ endif()
 
 set(SOURCES
     src/main.cpp
+    src/core/profiling.cpp
     src/data/mnist_loader.cpp
     src/network/network.cpp
     src/training/trainer.cpp

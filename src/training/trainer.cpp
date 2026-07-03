@@ -1,5 +1,6 @@
 #include "training/trainer.hpp"
 #include "core/cuda_utils.cuh"
+#include "core/profiling.hpp"
 #include "loss/softmax_cross_entropy.hpp"
 
 #include <algorithm>
@@ -13,6 +14,8 @@ Trainer::Trainer(Network& network, const TrainConfig& config)
       d_grad_output_(static_cast<std::size_t>(config.batch_size * network.output_size())),
       max_batch_size_(config.batch_size) {
     CUDA_CHECK(cudaMalloc(&d_batch_labels_, static_cast<std::size_t>(max_batch_size_) * sizeof(int)));
+    reset_peak_gpu_memory();
+    sample_gpu_memory();
 }
 
 Trainer::~Trainer() {
@@ -41,8 +44,15 @@ void Trainer::upload_batch(const MNISTDataset& dataset, int start, int count) {
                           host_labels.size() * sizeof(int), cudaMemcpyHostToDevice));
 }
 
+void Trainer::sample_gpu_memory() {
+    update_peak_gpu_memory(peak_gpu_memory_bytes_);
+}
+
 TrainMetrics Trainer::train_epoch(const MNISTDataset& dataset) {
     TrainMetrics metrics{};
+    WallTimer timer;
+    timer.start();
+
     float loss_accum = 0.0f;
     int correct = 0;
     int total = 0;
@@ -60,6 +70,7 @@ TrainMetrics Trainer::train_epoch(const MNISTDataset& dataset) {
 
         network_.backward(d_grad_output_.device_data(), count);
         network_.update(config_.learning_rate);
+        sample_gpu_memory();
 
         loss_accum += batch_loss;
         ++batch_count;
@@ -80,11 +91,18 @@ TrainMetrics Trainer::train_epoch(const MNISTDataset& dataset) {
 
     metrics.loss = loss_accum / static_cast<float>(batch_count);
     metrics.accuracy = static_cast<float>(correct) / static_cast<float>(total);
+    metrics.elapsed_sec = timer.elapsed_sec();
+    sample_gpu_memory();
+    metrics.gpu_memory_used_bytes = query_gpu_memory().used_bytes;
+    metrics.gpu_memory_peak_bytes = peak_gpu_memory_bytes_;
     return metrics;
 }
 
 TrainMetrics Trainer::evaluate(const MNISTDataset& dataset) {
     TrainMetrics metrics{};
+    WallTimer timer;
+    timer.start();
+
     float loss_accum = 0.0f;
     int correct = 0;
     int batch_count = 0;
@@ -101,6 +119,7 @@ TrainMetrics Trainer::evaluate(const MNISTDataset& dataset) {
 
         loss_accum += batch_loss;
         ++batch_count;
+        sample_gpu_memory();
 
         for (int i = 0; i < count; ++i) {
             const float* logits =
@@ -113,5 +132,9 @@ TrainMetrics Trainer::evaluate(const MNISTDataset& dataset) {
 
     metrics.loss = loss_accum / static_cast<float>(batch_count);
     metrics.accuracy = static_cast<float>(correct) / static_cast<float>(dataset.num_samples);
+    metrics.elapsed_sec = timer.elapsed_sec();
+    sample_gpu_memory();
+    metrics.gpu_memory_used_bytes = query_gpu_memory().used_bytes;
+    metrics.gpu_memory_peak_bytes = peak_gpu_memory_bytes_;
     return metrics;
 }

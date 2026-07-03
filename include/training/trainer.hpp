@@ -16,6 +16,9 @@ struct TrainConfig {
 struct TrainMetrics {
     float loss = 0.0f;
     float accuracy = 0.0f;
+    double elapsed_sec = 0.0;
+    std::size_t gpu_memory_used_bytes = 0;
+    std::size_t gpu_memory_peak_bytes = 0;
 };
 
 class Trainer {
@@ -26,6 +29,8 @@ public:
     TrainMetrics train_epoch(const MNISTDataset& dataset);
     TrainMetrics evaluate(const MNISTDataset& dataset);
 
+    std::size_t peak_gpu_memory_bytes() const { return peak_gpu_memory_bytes_; }
+
 private:
     Network& network_;
     TrainConfig config_;
@@ -34,6 +39,8 @@ private:
     Tensor d_grad_output_;
     int* d_batch_labels_ = nullptr;
     int max_batch_size_ = 0;
+    std::size_t peak_gpu_memory_bytes_ = 0;
 
     void upload_batch(const MNISTDataset& dataset, int start, int count);
+    void sample_gpu_memory();
 };

@@ -2,8 +2,10 @@
 #include "inference/inference_export.hpp"
 #include "network/network_builder.hpp"
 #include "training/trainer.hpp"
+#include "core/profiling.hpp"
 
 #include <filesystem>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -133,18 +135,29 @@ int main(int argc, char** argv) {
 
         Trainer trainer(network, config);
 
+        WallTimer total_timer;
+        total_timer.start();
+
         for (int epoch = 1; epoch <= config.epochs; ++epoch) {
             std::cout << "\nEpoch " << epoch << '/' << config.epochs << '\n';
             const auto train_metrics = trainer.train_epoch(train_set);
             const auto test_metrics = trainer.evaluate(test_set);
 
+            std::cout << std::fixed << std::setprecision(2);
             std::cout << "  train loss: " << train_metrics.loss
                       << " | train acc: " << (train_metrics.accuracy * 100.0f) << "%\n";
             std::cout << "  test  loss: " << test_metrics.loss
                       << " | test  acc: " << (test_metrics.accuracy * 100.0f) << "%\n";
+            std::cout << "  train time: " << train_metrics.elapsed_sec << " s"
+                      << " | eval time: " << test_metrics.elapsed_sec << " s\n";
+            std::cout << "  GPU mem: " << format_mib(train_metrics.gpu_memory_used_bytes)
+                      << " (pico: " << format_mib(train_metrics.gpu_memory_peak_bytes) << ")\n";
         }
 
         std::cout << "\nEntrenamiento completado.\n";
+        std::cout << std::fixed << std::setprecision(2);
+        std::cout << "Tiempo total de entrenamiento: " << total_timer.elapsed_sec() << " s\n";
+        std::cout << "Pico de memoria GPU: " << format_mib(trainer.peak_gpu_memory_bytes()) << '\n';
         std::cout << "Exportando inferencia (" << opts.export_samples << " muestras) a "
                   << opts.export_path << "...\n";
 
