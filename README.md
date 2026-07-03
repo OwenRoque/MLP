@@ -31,7 +31,7 @@ También admite un modo **perceptrón lineal** (`--hidden-size 0`).
 Entrada (784)  →  Linear(hidden)  →  Activación  →  Linear(10)  →  Softmax  →  Clase (0–9)
 ```
 
-Por defecto: `hidden=128`, activación **ReLU**. También se soportan **GeLU** y **Sigmoid**.
+Por defecto: `hidden=128`, activación **ReLU**. **GeLU** y **Sigmoid** aun en proceso de evaluación.
 
 ### Perceptrón lineal (`--hidden-size 0`)
 
@@ -46,7 +46,7 @@ Entrada (784)  →  Linear(10)  →  Softmax  →  Clase (0–9)
 | Módulo | Función |
 |--------|---------|
 | `LinearLayer` | Capa afín con pesos y sesgos (CUDA) |
-| `ActivationLayer` | ReLU, GeLU o Sigmoid (CUDA) |
+| `ActivationLayer` | ReLU (CUDA) |
 | `Network` | Encadena capas |
 | `Trainer` | Entrenamiento por mini-batches |
 | `export_inference_results` | Inferencia sobre N muestras y exportación `.npz` |
@@ -62,7 +62,7 @@ MNISTLoader → Trainer → Network (CUDA) → export_inference_results → infe
 
 ## Exportación e inferencia
 
-Tras entrenar, `mnist_mlp` ejecuta inferencia sobre **20 muestras** del conjunto test (configurable) y genera `inference_results.npz` con:
+Tras entrenar, `mnist_mlp` ejecuta inferencia sobre **10 muestras** del conjunto test (configurable) y genera `inference_results.npz` con:
 
 | Array | Forma | Descripción |
 |-------|-------|-------------|
@@ -189,11 +189,11 @@ cmake --build .
   --data data/mnist \
   --epochs 10 \
   --batch-size 128 \
-  --lr 0.01 \
+  --lr 0.1 \
   --hidden-size 128 \
   --activation relu \
   --export inference_results.npz \
-  --export-samples 20 \
+  --export-samples 10 \
   --export-start 0
 ```
 
@@ -206,14 +206,14 @@ cmake --build .
 | `--hidden-size` | `128` | Neuronas ocultas (`0` = lineal) |
 | `--activation` | `relu` | `relu`, `gelu`, `sigmoid` |
 | `--export` | `inference_results.npz` | Archivo de salida |
-| `--export-samples` | `20` | Número de ejemplos |
+| `--export-samples` | `10` | Número de ejemplos |
 | `--export-start` | `0` | Índice inicial en test |
 
 ---
 
 ## Parámetros
 
-- **MLP**: `lr=0.01`, `hidden-size=128`, 10 épocas.
+- **MLP**: `lr=0.1`, `hidden-size=128`, 10 épocas.
 - **Lineal**: `--hidden-size 0 --lr 0.1`.
 
 ---

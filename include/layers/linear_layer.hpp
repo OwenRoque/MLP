@@ -5,8 +5,8 @@
 
 #include <memory>
 
-/// Capa lineal (perceptrón): y = x·W^T + b
-/// Para MNIST: 784 entradas → 10 salidas (un neurona por dígito).
+/// Capa lineal (perceptron): y = x·W^T + b
+/// Para MNIST: 784 entradas → 10 salidas (un neurona por digito).
 class LinearLayer : public Layer {
 public:
     LinearLayer(int input_size, int output_size, unsigned int seed = 42);

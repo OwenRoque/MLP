@@ -4,9 +4,9 @@
 #include "core/tensor.hpp"
 #include "layers/layer.hpp"
 
-/// Capa de activación element-wise sin parámetros entrenables.
+/// Capa de activacion element-wise sin parametros entrenables.
 class ActivationLayer : public Layer {
-public:
+public: 
     ActivationLayer(int size, ActivationType type, int max_batch_size = 512);
 
     void forward(const float* input, int batch_size) override;
