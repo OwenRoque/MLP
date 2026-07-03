@@ -1,4 +1,6 @@
 build/
+inference_results.npz
+inference_plot.png
 data/mnist/*.ubyte
 data/mnist/*.gz
 data/mnist/*

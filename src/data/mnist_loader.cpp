@@ -56,7 +56,7 @@ MNISTDataset MNISTLoader::load_images(const std::string& image_path,
     const int expected_image_bytes = num_samples * MNISTDataset::IMAGE_SIZE;
 
     if (static_cast<long long>(image_bytes) - 16 != expected_image_bytes) {
-        throw std::runtime_error("Tamaño de imágenes MNIST inconsistente con etiquetas");
+        throw std::runtime_error("Tamano de imagenes MNIST inconsistente con etiquetas");
     }
 
     MNISTDataset dataset;

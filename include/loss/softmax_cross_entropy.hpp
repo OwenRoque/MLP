@@ -1,12 +1,12 @@
 #pragma once
 
-/// Softmax + entropía cruzada combinados (estable numéricamente).
-/// En entrenamiento: calcula pérdida y deja en output el gradiente ∂L/∂logits.
+/// Softmax + entropia cruzada combinados (estable numericamente).
+/// En entrenamiento: calcula perdida y deja en output el gradiente ∂L/∂logits.
 class SoftmaxCrossEntropy {
 public:
     /// logits: [batch * num_classes] en GPU
     /// labels: [batch] enteros en GPU
-    /// Devuelve la pérdida media del batch.
+    /// Devuelve la perdida media del batch.
     static float forward(const float* logits, const int* labels, float* grad_logits,
                          int batch_size, int num_classes);
 

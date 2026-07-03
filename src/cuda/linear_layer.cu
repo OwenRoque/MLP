@@ -148,7 +148,7 @@ LinearLayer::LinearLayer(int input_size, int output_size, unsigned int seed)
 
 void LinearLayer::forward(const float* input, int batch_size) {
   if (batch_size > max_batch_size_) {
-    throw std::runtime_error("batch_size excede el máximo reservado para LinearLayer");
+    throw std::runtime_error("batch_size excede el maximo reservado para LinearLayer");
   }
   last_input_ = input;
   launch_linear_forward(input, weights_.device_data(), bias_.device_data(),

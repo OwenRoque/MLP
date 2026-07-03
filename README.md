@@ -1,6 +1,8 @@
-# Perceptrón MNIST con CUDA
+# MLP MNIST con CUDA
 
-Este proyecto implementa un **perceptrón de una capa** en **C++/CUDA** para clasificar dígitos manuscritos del conjunto de datos **MNIST**. El modelo recibe imágenes de 28×28 píxeles y predice una de diez clases (dígitos del 0 al 9). El entrenamiento utiliza la GPU mediante kernels CUDA propios.
+Este proyecto implementa una **red neuronal multicapa (MLP)** en **C++/CUDA** para clasificar dígitos manuscritos del conjunto de datos **MNIST**. El entrenamiento y la inferencia se ejecutan en GPU; la **visualización de resultados** se realiza en **Python** a partir de un archivo `.npz` exportado tras el entrenamiento.
+
+También admite un modo **perceptrón lineal** (`--hidden-size 0`).
 
 ---
 
@@ -8,194 +10,171 @@ Este proyecto implementa un **perceptrón de una capa** en **C++/CUDA** para cla
 
 1. [Descripción del modelo](#descripción-del-modelo)
 2. [Arquitectura del software](#arquitectura-del-software)
-3. [Fundamento matemático](#fundamento-matemático)
-4. [Kernels CUDA](#kernels-cuda)
-5. [Requisitos](#requisitos)
-6. [Compilación y ejecución](#compilación-y-ejecución)
-7. [Parámetros de entrenamiento](#parámetros-de-entrenamiento)
-8. [Resultados esperados](#resultados-esperados)
-9. [Estructura del repositorio](#estructura-del-repositorio)
-10. [Referencias](#referencias)
+3. [Exportación e inferencia](#exportación-e-inferencia)
+4. [Visualización en Python / Colab](#visualización-en-python--colab)
+5. [Fundamento matemático](#fundamento-matemático)
+6. [Kernels CUDA](#kernels-cuda)
+7. [Requisitos](#requisitos)
+8. [Compilación y ejecución](#compilación-y-ejecución)
+9. [Parámetros](#parámetros)
+10. [Resultados esperados](#resultados-esperados)
+11. [Estructura del repositorio](#estructura-del-repositorio)
+12. [Referencias](#referencias)
 
 ---
 
 ## Descripción del modelo
 
-El perceptrón implementado es una **capa lineal** que transforma un vector de entrada de 784 componentes (imagen aplanada) en 10 salidas, una por cada dígito:
+### MLP (configuración por defecto)
 
 ```
-Entrada (784 píxeles)  →  Capa lineal (10 neuronas)  →  Softmax  →  Clase (0–9)
+Entrada (784)  →  Linear(hidden)  →  Activación  →  Linear(10)  →  Softmax  →  Clase (0–9)
 ```
 
-- Las imágenes se normalizan al rango `[0, 1]` dividiendo cada píxel entre 255.
-- Cada salida representa un *logit* asociado a un dígito.
-- La clase predicha corresponde al dígito con mayor probabilidad tras aplicar softmax.
-- El entrenamiento emplea **descenso de gradiente estocástico (SGD)** con **softmax + entropía cruzada** como función de pérdida.
+Por defecto: `hidden=128`, activación **ReLU**. También se soportan **GeLU** y **Sigmoid**.
 
-Con este esquema se obtiene un clasificador lineal. En MNIST suele alcanzarse una precisión de aproximadamente **88–92 %** en el conjunto de prueba tras varias épocas.
+### Perceptrón lineal (`--hidden-size 0`)
+
+```
+Entrada (784)  →  Linear(10)  →  Softmax  →  Clase (0–9)
+```
 
 ---
 
 ## Arquitectura del software
 
-El código se organiza en módulos con responsabilidades separadas:
-
 | Módulo | Función |
 |--------|---------|
-| `Layer` | Interfaz común para capas (`forward`, `backward`, `update`) |
-| `LinearLayer` | Capa lineal con pesos, sesgos y kernels CUDA |
-| `Network` | Encadena una o más capas |
-| `Trainer` | Bucle de entrenamiento por mini-batches |
-| `MNISTLoader` | Lectura de archivos IDX de MNIST |
-| `SoftmaxCrossEntropy` | Pérdida y gradiente en GPU |
-| `Tensor` | Gestión RAII de memoria en dispositivo |
+| `LinearLayer` | Capa afín con pesos y sesgos (CUDA) |
+| `ActivationLayer` | ReLU, GeLU o Sigmoid (CUDA) |
+| `Network` | Encadena capas |
+| `Trainer` | Entrenamiento por mini-batches |
+| `export_inference_results` | Inferencia sobre N muestras y exportación `.npz` |
+| `scripts/visualize_inference.py` | Visualización local con matplotlib |
 
 ```
-┌─────────────┐     ┌──────────────┐     ┌─────────────────────┐
-│ MNISTLoader │────▶│   Trainer    │────▶│      Network        │
-│  (CPU)      │     │ mini-batches │     │  ┌───────────────┐  │
-└─────────────┘     └──────┬───────┘     │  │  LinearLayer  │  │
-                           │             │  │    (CUDA)     │  │
-                           ▼             │  └───────────────┘  │
-                  SoftmaxCrossEntropy    └─────────────────────┘
-                     (CUDA, salida)
+MNISTLoader → Trainer → Network (CUDA) → export_inference_results → inference_results.npz
+                                                                              ↓
+                                                              Python / Colab (matplotlib)
 ```
 
-### Flujo de entrenamiento (un mini-batch)
+---
 
-1. Se sube el batch de imágenes y etiquetas a la GPU.
-2. `network.forward()` calcula los logits.
-3. `SoftmaxCrossEntropy::forward()` obtiene la pérdida y el gradiente ∂L/∂logits.
-4. `network.backward()` propaga gradientes hacia pesos y sesgos.
-5. `network.update(lr)` aplica SGD en la GPU.
+## Exportación e inferencia
+
+Tras entrenar, `mnist_mlp` ejecuta inferencia sobre **20 muestras** del conjunto test (configurable) y genera `inference_results.npz` con:
+
+| Array | Forma | Descripción |
+|-------|-------|-------------|
+| `images` | `(N, 28, 28)` | Imágenes normalizadas [0, 1] |
+| `y_true` | `(N,)` | Etiqueta real (0–9) |
+| `y_pred` | `(N,)` | Predicción del modelo |
+| `confidence` | `(N,)` | Probabilidad de la clase predicha (0–1) |
+
+No se exportan pesos del modelo; solo resultados listos para visualizar.
+
+---
+
+## Visualización en Python / Colab
+
+### Requisitos Python
+
+```bash
+pip install numpy matplotlib
+```
+
+### Local
+
+```bash
+# Tras entrenar (genera inference_results.npz)
+python scripts/visualize_inference.py inference_results.npz
+```
+
+Genera una cuadrícula 4×5 (20 ejemplos) con título **P** (predicción), **R** (real) y **C** (confianza %). Verde = acierto, rojo = error.
+
+### Google Colab
+
+1. Entrenar en local y subir `inference_results.npz` a Colab.
+2. Ejecutar el contenido de `scripts/visualize_inference_colab.py`:
+
+```python
+from google.colab import files
+import matplotlib.pyplot as plt
+import numpy as np
+
+uploaded = files.upload()
+npz_path = next(iter(uploaded))
+
+data = np.load(npz_path)
+images, y_true, y_pred, confidence = data["images"], data["y_true"], data["y_pred"], data["confidence"]
+
+n, cols = len(y_true), 5
+rows = (n + cols - 1) // cols
+fig, axes = plt.subplots(rows, cols, figsize=(cols * 2.2, rows * 2.4))
+axes = np.atleast_2d(axes)
+
+for i in range(rows * cols):
+    ax = axes[i // cols, i % cols]
+    ax.axis("off")
+    if i >= n:
+        continue
+    ax.imshow(images[i], cmap="gray", vmin=0, vmax=1)
+    color = "green" if y_pred[i] == y_true[i] else "red"
+    ax.set_title(f"P:{y_pred[i]} R:{y_true[i]}\nC:{confidence[i]*100:.1f}%", fontsize=10, color=color)
+
+plt.tight_layout()
+plt.show()
+```
 
 ---
 
 ## Fundamento matemático
 
-### Forward (capa lineal)
+### Capa lineal
 
-Para cada muestra **x** ∈ ℝ⁷⁸⁴, con pesos **W** ∈ ℝ¹⁰ˣ⁷⁸⁴ y sesgo **b** ∈ ℝ¹⁰:
+`z = xWᵀ + b`
 
-```
-zⱼ = bⱼ + Σᵢ xᵢ · Wⱼᵢ     (j = 0…9)
-```
+### Activaciones
 
-### Softmax
+ReLU, GeLU (aprox. tanh) y Sigmoid en capa oculta.
 
-```
-pⱼ = exp(zⱼ - max(z)) / Σₖ exp(zₖ - max(z))
-```
+### Salida
 
-Se resta `max(z)` por estabilidad numérica.
-
-### Entropía cruzada
-
-Para la etiqueta verdadera `y`:
-
-```
-L = -log(pᵧ)
-```
-
-### Gradiente combinado (softmax + entropía cruzada)
-
-```
-∂L/∂zⱼ = pⱼ - δⱼᵧ
-```
-
-donde `δⱼᵧ` vale 1 si `j == y` y 0 en caso contrario. El gradiente se promedia sobre el batch.
-
-### Backward (capa lineal)
-
-Con `gⱼ = ∂L/∂zⱼ`:
-
-```
-∂L/∂Wⱼᵢ = gⱼ · xᵢ
-∂L/∂bⱼ   = gⱼ
-∂L/∂xᵢ   = Σⱼ gⱼ · Wⱼᵢ
-```
-
-### Actualización SGD
-
-```
-W ← W - η · ∇W
-b ← b - η · ∇b
-```
-
-`η` es la tasa de aprendizaje (por defecto `0.1`).
-
-### Inicialización de pesos
-
-Se utiliza inicialización **Xavier/Glorot** con escala `√(2 / (n_in + n_out))` y sesgos en cero.
+Softmax + entropía cruzada; SGD para actualizar pesos.
 
 ---
 
 ## Kernels CUDA
 
-| Kernel | Archivo | Paralelismo |
-|--------|---------|-------------|
-| `linear_forward_kernel` | `linear_layer.cu` | 1 bloque por muestra, 1 hilo por neurona de salida |
-| `linear_backward_params_kernel` | `linear_layer.cu` | 1 hilo por neurona; `atomicAdd` para acumular gradientes |
-| `linear_backward_input_kernel` | `linear_layer.cu` | 1 bloque por muestra, hilos sobre dimensiones de entrada |
-| `sgd_update_kernel` | `linear_layer.cu` | Actualización paralela de pesos y sesgos |
-| `softmax_cross_entropy_kernel` | `softmax_cross_entropy.cu` | 1 bloque por muestra del batch |
-
-Las operaciones de forward, backward y actualización de parámetros se ejecutan en GPU. La carga de datos y el registro de métricas se realizan en CPU.
+| Kernel | Archivo |
+|--------|---------|
+| `linear_forward_kernel` | `linear_layer.cu` |
+| `linear_backward_*` | `linear_layer.cu` |
+| `activation_forward/backward_kernel` | `activation_layer.cu` |
+| `softmax_cross_entropy_kernel` | `softmax_cross_entropy.cu` |
 
 ---
 
 ## Requisitos
 
-- GPU NVIDIA con soporte CUDA
-- Driver NVIDIA compatible con el toolkit CUDA instalado
-- CUDA Toolkit ≥ 11.x
-- CMake ≥ 3.18 (recomendado ≥ 3.24 para arquitectura `native`)
-- Compilador C++17 (g++ o clang)
-- `curl`, `unzip` y credenciales de Kaggle para descargar el dataset
-
-Comprobación del entorno:
-
-```bash
-nvidia-smi
-nvcc --version
-```
+- GPU NVIDIA + CUDA Toolkit ≥ 11.x
+- CMake ≥ 3.18, compilador C++17
+- Zlib (para exportación NPZ)
+- Credenciales Kaggle para descargar MNIST
+- Python 3 + numpy + matplotlib (solo visualización)
 
 ---
 
 ## Compilación y ejecución
 
-### 1. Descargar MNIST desde Kaggle
-
-El script obtiene el dataset [hojjatk/mnist-dataset](https://www.kaggle.com/datasets/hojjatk/mnist-dataset) y extrae los archivos IDX en `data/mnist/`.
-
-**Autenticación requerida** (una de las dos opciones):
+### Descargar MNIST
 
 ```bash
-# Opción A: token de API
 export KAGGLE_API_TOKEN=<token>
-```
-
-```bash
-# Opción B: archivo de credenciales
-mkdir -p ~/.kaggle
-# Colocar kaggle.json con {"username":"...","key":"..."}
-chmod 600 ~/.kaggle/kaggle.json
-```
-
-También es necesario **aceptar las reglas del dataset** en la página de Kaggle antes de descargar.
-
-```bash
 bash scripts/download_mnist.sh
 ```
 
-Archivos generados en `data/mnist/`:
-
-- `train-images-idx3-ubyte`, `train-labels-idx1-ubyte`
-- `t10k-images-idx3-ubyte`, `t10k-labels-idx1-ubyte`
-
-El script valida el tamaño de cada archivo para detectar descargas corruptas o no autorizadas.
-
-### 2. Compilar
+### Compilar
 
 ```bash
 mkdir -p build && cd build
@@ -203,67 +182,48 @@ cmake ..
 cmake --build .
 ```
 
-Si aparece el error *"PTX compiled with an unsupported toolchain"*, se debe indicar la arquitectura de la GPU:
+### Entrenar y exportar
 
 ```bash
-cmake -DCMAKE_CUDA_ARCHITECTURES=89 ..   # RTX 40xx (Ada)
-cmake --build .
-```
-
-Otras referencias habituales: `75` (Turing), `86` (Ampere), `89` (Ada).
-
-### 3. Entrenar
-
-El ejecutable acepta `--data data/mnist` tanto desde la raíz del proyecto como desde `build/` (resuelve automáticamente `../data/mnist`).
-
-Desde la raíz del proyecto:
-
-```bash
-./build/mnist_perceptron \
+./build/mnist_mlp \
   --data data/mnist \
   --epochs 10 \
   --batch-size 128 \
-  --lr 0.1
+  --lr 0.01 \
+  --hidden-size 128 \
+  --activation relu \
+  --export inference_results.npz \
+  --export-samples 20 \
+  --export-start 0
 ```
 
-<!--Desde el directorio `build/`:
-
-```bash
-./mnist_perceptron \
-  --data data/mnist \
-  --epochs 10 \
-  --batch-size 128 \
-  --lr 0.1
-```
--->
-
-| Flag | Valor por defecto | Descripción |
-|------|-------------------|-------------|
-| `--data` | `data/mnist` | Directorio con archivos IDX |
-| `--epochs` | `10` | Número de épocas |
-| `--batch-size` | `128` | Tamaño del mini-batch |
-| `--lr` | `0.1` | Tasa de aprendizaje SGD |
+| Flag | Default | Descripción |
+|------|---------|-------------|
+| `--data` | `data/mnist` | Directorio MNIST |
+| `--epochs` | `10` | Épocas |
+| `--batch-size` | `128` | Mini-batch |
+| `--lr` | `0.01` | Learning rate |
+| `--hidden-size` | `128` | Neuronas ocultas (`0` = lineal) |
+| `--activation` | `relu` | `relu`, `gelu`, `sigmoid` |
+| `--export` | `inference_results.npz` | Archivo de salida |
+| `--export-samples` | `20` | Número de ejemplos |
+| `--export-start` | `0` | Índice inicial en test |
 
 ---
 
-## Parámetros de entrenamiento
+## Parámetros
 
-- **Batch size 128–256**: equilibrio habitual entre velocidad y estabilidad.
-- **Learning rate 0.1**: valor elevado que funciona bien en la capa lineal; si la pérdida oscila, conviene probar `0.05` o `0.01`.
-- **Épocas**: entre 5 y 10 suelen ser suficientes para aproximarse al ~90 % de precisión en test.
+- **MLP**: `lr=0.01`, `hidden-size=128`, 10 épocas.
+- **Lineal**: `--hidden-size 0 --lr 0.1`.
 
 ---
 
 ## Resultados esperados
 
-Con **1 época**, batch 256 y learning rate 0.1 (GPU RTX 4070):
-
-```
-train acc: ~83–85 %
-test  acc: ~88–89 %
-```
-
-Con **10 épocas**, la precisión en test suele situarse alrededor del **90–92 %**.
+| Configuración | Precisión test (aprox.) |
+|---------------|-------------------------|
+| Lineal, 10 épocas | ~90–92 % |
+| MLP 128 ReLU, 10 épocas | ~96–98 % |
 
 ---
 
@@ -271,37 +231,23 @@ Con **10 épocas**, la precisión en test suele situarse alrededor del **90–92
 
 ```
 MLP/
-├── CMakeLists.txt
-├── README.md
 ├── include/
-│   ├── core/
-│   │   ├── cuda_utils.cuh
-│   │   └── tensor.hpp
-│   ├── layers/
-│   │   ├── layer.hpp
-│   │   └── linear_layer.hpp
-│   ├── loss/
-│   │   └── softmax_cross_entropy.hpp
-│   ├── data/
-│   │   └── mnist_loader.hpp
-│   ├── network/
-│   │   └── network.hpp
-│   └── training/
-│       └── trainer.hpp
+│   ├── activations/activation.hpp
+│   ├── inference/inference_export.hpp
+│   ├── layers/{layer, linear_layer, activation_layer}.hpp
+│   ├── network/{network, network_builder}.hpp
+│   └── ...
 ├── src/
 │   ├── main.cpp
-│   ├── data/mnist_loader.cpp
-│   ├── network/network.cpp
-│   ├── training/trainer.cpp
+│   ├── inference/inference_export.cpp
 │   └── cuda/
-│       ├── linear_layer.cu
-│       └── softmax_cross_entropy.cu
 ├── scripts/
-│   └── download_mnist.sh
-└── data/mnist/
+│   ├── download_mnist.sh
+│   ├── visualize_inference.py
+│   └── visualize_inference_colab.py
+└── inference_results.npz   # generado al entrenar
 ```
 
-<!--
 ---
 
 ## Referencias
@@ -309,5 +255,3 @@ MLP/
 - [MNIST database](http://yann.lecun.com/exdb/mnist/)
 - [Dataset MNIST en Kaggle](https://www.kaggle.com/datasets/hojjatk/mnist-dataset)
 - [CUDA C++ Programming Guide](https://docs.nvidia.com/cuda/cuda-c-programming-guide/)
-- Goodfellow et al., *Deep Learning* — perceptrón, softmax y retropropagación
--->

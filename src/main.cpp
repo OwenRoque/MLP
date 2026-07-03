@@ -1,10 +1,9 @@
 #include "data/mnist_loader.hpp"
-#include "layers/linear_layer.hpp"
-#include "network/network.hpp"
+#include "inference/inference_export.hpp"
+#include "network/network_builder.hpp"
 #include "training/trainer.hpp"
 
 #include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <memory>
 #include <string>
@@ -15,7 +14,12 @@ struct CliOptions {
     std::string data_dir = "data/mnist";
     int epochs = 10;
     int batch_size = 128;
-    float learning_rate = 0.1f;
+    float learning_rate = 0.01f;
+    int hidden_size = 128;
+    ActivationType activation = ActivationType::ReLU;
+    std::string export_path = "inference_results.npz";
+    int export_samples = 20;
+    int export_start = 0;
 };
 
 bool has_mnist_files(const std::string& dir) {
@@ -39,6 +43,21 @@ std::string resolve_data_dir(const std::string& requested) {
     return requested;
 }
 
+void print_usage() {
+    std::cout << "Uso: mnist_mlp [opciones]\n\n"
+              << "Opciones:\n"
+              << "  --data DIR              Directorio MNIST (default: data/mnist)\n"
+              << "  --epochs N              Épocas de entrenamiento (default: 10)\n"
+              << "  --batch-size N          Tamaño de mini-batch (default: 128)\n"
+              << "  --lr RATE               Tasa de aprendizaje (default: 0.01)\n"
+              << "  --hidden-size N         Neuronas capa oculta; 0 = lineal (default: 128)\n"
+              << "  --activation TYPE       relu | gelu | sigmoid (default: relu)\n"
+              << "  --export PATH           Archivo .npz de inferencia (default: inference_results.npz)\n"
+              << "  --export-samples N      Muestras a exportar (default: 10)\n"
+              << "  --export-start N        Índice inicial en test (default: 0)\n"
+              << "  --help                  Muestra esta ayuda\n";
+}
+
 CliOptions parse_args(int argc, char** argv) {
     CliOptions opts;
     for (int i = 1; i < argc; ++i) {
@@ -51,10 +70,21 @@ CliOptions parse_args(int argc, char** argv) {
             opts.batch_size = std::stoi(argv[++i]);
         } else if (arg == "--lr" && i + 1 < argc) {
             opts.learning_rate = std::stof(argv[++i]);
+        } else if (arg == "--hidden-size" && i + 1 < argc) {
+            opts.hidden_size = std::stoi(argv[++i]);
+        } else if (arg == "--activation" && i + 1 < argc) {
+            opts.activation = parse_activation(argv[++i]);
+        } else if (arg == "--export" && i + 1 < argc) {
+            opts.export_path = argv[++i];
+        } else if (arg == "--export-samples" && i + 1 < argc) {
+            opts.export_samples = std::stoi(argv[++i]);
+        } else if (arg == "--export-start" && i + 1 < argc) {
+            opts.export_start = std::stoi(argv[++i]);
         } else if (arg == "--help") {
-            std::cout << "Uso: mnist_perceptron [--data DIR] [--epochs N] "
-                         "[--batch-size N] [--lr RATE]\n";
+            print_usage();
             std::exit(0);
+        } else {
+            throw std::invalid_argument("Argumento desconocido: " + arg);
         }
     }
     return opts;
@@ -67,7 +97,7 @@ int main(int argc, char** argv) {
         const CliOptions opts = parse_args(argc, argv);
         const std::string data_dir = resolve_data_dir(opts.data_dir);
 
-        std::cout << "=== Perceptrón MNIST (CUDA) ===\n";
+        std::cout << "=== MLP MNIST (CUDA) ===\n";
         std::cout << "Cargando datos desde: " << data_dir << '\n';
 
         if (!has_mnist_files(data_dir)) {
@@ -87,8 +117,14 @@ int main(int argc, char** argv) {
         std::cout << "Train: " << train_set.num_samples << " muestras\n";
         std::cout << "Test:  " << test_set.num_samples << " muestras\n";
 
-        Network network;
-        network.add_layer(std::make_unique<LinearLayer>(MNISTDataset::IMAGE_SIZE, 10));
+        NetworkConfig net_config;
+        net_config.hidden_size = opts.hidden_size;
+        net_config.activation = opts.activation;
+
+        Network network = build_network(net_config);
+        print_network_architecture(network, std::cout, opts.activation, opts.hidden_size);
+        std::cout << "Func. Activacion: " << activation_name(opts.activation) << '\n';
+        std::cout << "Capas en red:      " << network.num_layers() << '\n';
 
         TrainConfig config;
         config.epochs = opts.epochs;
@@ -98,7 +134,7 @@ int main(int argc, char** argv) {
         Trainer trainer(network, config);
 
         for (int epoch = 1; epoch <= config.epochs; ++epoch) {
-            std::cout << "\nÉpoca " << epoch << '/' << config.epochs << '\n';
+            std::cout << "\nEpoch " << epoch << '/' << config.epochs << '\n';
             const auto train_metrics = trainer.train_epoch(train_set);
             const auto test_metrics = trainer.evaluate(test_set);
 
@@ -109,6 +145,12 @@ int main(int argc, char** argv) {
         }
 
         std::cout << "\nEntrenamiento completado.\n";
+        std::cout << "Exportando inferencia (" << opts.export_samples << " muestras) a "
+                  << opts.export_path << "...\n";
+
+        export_inference_results(network, test_set, opts.export_path, opts.export_samples,
+                                 opts.export_start);
+
         return 0;
     } catch (const std::exception& ex) {
         std::cerr << "Error: " << ex.what() << '\n';

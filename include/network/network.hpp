@@ -5,7 +5,7 @@
 #include <memory>
 #include <vector>
 
-/// Contenedor de capas encadenadas. Con una sola LinearLayer es un perceptrón;
+/// Contenedor de capas encadenadas. Con una sola LinearLayer es un perceptron;
 /// al añadir capas ocultas se convierte en MLP sin cambiar la API de entrenamiento.
 class Network {
 public:
