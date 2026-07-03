@@ -6,6 +6,12 @@ También admite un modo **perceptrón lineal** (`--hidden-size 0`).
 
 ---
 
+## Integrantes
+- Roque Sosa Owen Haziel
+- Zanabria Sacsi Diego Alonso
+- Castillo Sancho Sergio Ahmed
+- Apaza Andaluz Diego Francisco
+
 ## Tabla de contenidos
 
 1. [Descripción del modelo](#descripción-del-modelo)
